@@ -9,7 +9,7 @@ import pandas as pd
 from typing import List, Callable, Tuple
 from tqdm import tqdm
 
-from ..objects import RawBar, Freq, Signal, Factor, Event, Freq, Operate
+from ..objects import RawBar, Event, Freq, Operate
 from ..signals import get_default_signals
 from ..analyze import CzscTrader, KlineGenerator
 
@@ -34,7 +34,7 @@ def generate_signals(f1_raw_bars: List[RawBar],
     for bar in f1_raw_bars[:init_count]:
         kg.update(bar)
 
-    ct = CzscTrader(kg, get_signals, events=[])
+    ct = CzscTrader(op_freq=None, kg=kg, get_signals=get_signals, events=[])
     signals = []
     for bar in tqdm(f1_raw_bars[init_count:], desc=f"generate signals of {symbol}"):
         try:
@@ -63,16 +63,27 @@ def long_trade_estimator(pairs: List[dict]):
          '累计盈亏比': 2.27,
          '单笔盈亏比': 2.54}
     """
-    df = pd.DataFrame(pairs)
+    if not pairs:
+        return {
+            '标的代码': pairs[0]['标的代码'],
+            '交易次数': len(pairs),
+            '累计收益（%）': 0,
+            '单笔收益（%）': 0,
+            '平均持仓分钟': 0,
+            '胜率（%）': 0,
+            '累计盈亏比': 0,
+            '单笔盈亏比': 0,
+        }
 
+    df = pd.DataFrame(pairs)
     x_round = lambda x: int(x * 100) / 100
 
     res = {
         '标的代码': pairs[0]['标的代码'],
         '交易次数': len(pairs),
+        '平均持仓分钟': int(df['持仓分钟'].mean()),
         '累计收益（%）': x_round(df['盈亏（%）'].sum()),
         '单笔收益（%）': x_round(df['盈亏（%）'].mean()),
-        '平均持仓分钟': int(df['持仓分钟'].mean()),
         '胜率（%）': int(len(df[df['盈亏（%）'] > 0]) / len(df) * 10000) / 100,
         '累计盈亏比': int(df[df['盈亏（%）'] > 0]['盈亏（%）'].sum() /
                      abs(df[df['盈亏（%）'] < 0]['盈亏（%）'].sum()) * 100) / 100,
@@ -80,17 +91,22 @@ def long_trade_estimator(pairs: List[dict]):
                      abs(df[df['盈亏（%）'] < 0]['盈亏（%）'].mean()) * 100) / 100,
     }
 
+    res['持仓每分钟BP'] = round(res['累计收益（%）'] * 100 / df['持仓分钟'].sum(), 4)
     return res
 
 
 def long_trade_simulator(signals: List[dict],
                          long_open_event: Event,
-                         long_exit_event: Event) -> Tuple[List[dict], dict]:
+                         long_exit_event: Event,
+                         T0: bool = True,
+                         verbose: bool = False) -> Tuple[List[dict], dict]:
     """多头交易模拟
 
     :param signals: 信号列表，必须按时间升序
     :param long_open_event: 开多事件
     :param long_exit_event: 平多事件
+    :param T0: 是否支持T+0交易，默认为 True，表示支持
+    :param verbose: 是否显示更多信息，默认为 False，表示不显示
     :return: 交易对，绩效
     """
     assert len(signals) > 1000 and signals[1]['dt'] > signals[0]['dt']
@@ -102,20 +118,24 @@ def long_trade_simulator(signals: List[dict],
         if cache['last_op'] == Operate.LO:
             m, f = long_exit_event.is_match(signal)
             if m:
-                trades.append({
-                    "标的代码": signal['symbol'],
-                    '平仓时间': signal['dt'].strftime("%Y-%m-%d"),
-                    '平仓价格': signal['close'],
-                    '平仓理由': f,
-                    'eid': signal['id'],
-                })
-                cache['last_op'] = Operate.LE
+                if not T0 and signal['dt'].strftime("%Y-%m-%d") == trades[-1]['开仓时间']:
+                    if verbose:
+                        print(f"{signal['dt']}：不支持T0交易，上次开仓为 {trades[-1]}")
+                else:
+                    trades.append({
+                        "标的代码": signal['symbol'],
+                        '平仓时间': signal['dt'].strftime("%Y-%m-%d %H:%M"),
+                        '平仓价格': signal['close'],
+                        '平仓理由': f,
+                        'eid': signal['id'],
+                    })
+                    cache['last_op'] = Operate.LE
         else:
             m, f = long_open_event.is_match(signal)
             if m:
                 trades.append({
                     "标的代码": signal['symbol'],
-                    '开仓时间': signal['dt'].strftime("%Y-%m-%d"),
+                    '开仓时间': signal['dt'].strftime("%Y-%m-%d %H:%M"),
                     '开仓价格': signal['close'],
                     '开仓理由': f,
                     'oid': signal['id'],
@@ -124,6 +144,8 @@ def long_trade_simulator(signals: List[dict],
 
     if len(trades) % 2 != 0:
         trades = trades[:-1]
+        if verbose:
+            print(f"last trade drop: {trades[-1]}")
 
     pairs = []
     for i in range(0, len(trades), 2):
@@ -135,6 +157,7 @@ def long_trade_simulator(signals: List[dict],
 
     pf = long_trade_estimator(pairs)
     pf['基准收益（%）'] = int((signals[-1]['close'] - signals[0]['open']) / signals[0]['open'] * 10000) / 100
+    pf['基准每分钟BP'] = round((pf['基准收益（%）'] * 100) / (signals[-1]['id'] - signals[0]['id']), 4)
     pf['开始时间'] = signals[0]['dt'].strftime("%Y-%m-%d %H:%M")
     pf['结束时间'] = signals[-1]['dt'].strftime("%Y-%m-%d %H:%M")
     return pairs, pf
@@ -157,7 +180,7 @@ def one_event_estimator(signals: List[dict], event: Event) -> Tuple[List[dict], 
         if cache['last_op'] != Operate.LO and m:
             trades.append({
                 "标的代码": signal['symbol'],
-                '开仓时间': signal['dt'].strftime("%Y-%m-%d"),
+                '开仓时间': signal['dt'].strftime("%Y-%m-%d %H:%M"),
                 '开仓价格': signal['close'],
                 '开仓理由': f,
                 'oid': signal['id'],
@@ -167,7 +190,7 @@ def one_event_estimator(signals: List[dict], event: Event) -> Tuple[List[dict], 
         if cache['last_op'] == Operate.LO and not m:
             trades.append({
                 "标的代码": signal['symbol'],
-                '平仓时间': signal['dt'].strftime("%Y-%m-%d"),
+                '平仓时间': signal['dt'].strftime("%Y-%m-%d %H:%M"),
                 '平仓价格': signal['close'],
                 '平仓理由': "事件空白",
                 'eid': signal['id'],
@@ -187,6 +210,7 @@ def one_event_estimator(signals: List[dict], event: Event) -> Tuple[List[dict], 
 
     pf = long_trade_estimator(pairs)
     pf['基准收益（%）'] = int((signals[-1]['close'] - signals[0]['open']) / signals[0]['open'] * 10000) / 100
+    pf['基准每分钟BP'] = round((pf['基准收益（%）'] * 100) / (signals[-1]['id'] - signals[0]['id']), 4)
     pf['开始时间'] = signals[0]['dt'].strftime("%Y-%m-%d %H:%M")
     pf['结束时间'] = signals[-1]['dt'].strftime("%Y-%m-%d %H:%M")
     return pairs, pf
