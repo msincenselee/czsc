@@ -3,8 +3,7 @@ import zipfile
 from tqdm import tqdm
 from czsc.analyze import *
 from czsc.enum import Freq, Operate
-from czsc import signals
-from czsc.signals import get_default_signals, get_s_three_bi
+from czsc.signals.signals import get_default_signals, get_s_three_bi, get_s_d0_bi
 from czsc.objects import Event, Factor, Signal
 
 cur_path = os.path.split(os.path.realpath(__file__))[0]
@@ -26,14 +25,18 @@ def read_1min():
     return bars
 
 
-def test_find_bi():
+def read_daily():
     file_kline = os.path.join(cur_path, "data/000001.SH_D.csv")
     kline = pd.read_csv(file_kline, encoding="utf-8")
     kline.loc[:, "dt"] = pd.to_datetime(kline.dt)
-    bars = [RawBar(symbol=row['symbol'], id=i, freq=Freq.F1, open=row['open'], dt=row['dt'],
+    bars = [RawBar(symbol=row['symbol'], id=i, freq=Freq.D, open=row['open'], dt=row['dt'],
                    close=row['close'], high=row['high'], low=row['low'], vol=row['vol'])
             for i, row in kline.iterrows()]
+    return bars
 
+
+def test_find_bi():
+    bars = read_daily()
     # 去除包含关系
     bars1 = []
     for bar in bars:
@@ -76,13 +79,7 @@ def get_user_signals(c: CZSC) -> OrderedDict:
 
 
 def test_czsc_update():
-    file_kline = os.path.join(cur_path, "data/000001.SH_D.csv")
-    kline = pd.read_csv(file_kline, encoding="utf-8")
-    kline.loc[:, "dt"] = pd.to_datetime(kline.dt)
-    bars = [RawBar(symbol=row['symbol'], id=i, freq=Freq.D, open=row['open'], dt=row['dt'],
-                   close=row['close'], high=row['high'], low=row['low'], vol=row['vol'])
-            for i, row in kline.iterrows()]
-
+    bars = read_daily()
     # 不计算任何信号
     c = CZSC(bars, max_bi_count=50)
     assert not c.signals
@@ -135,16 +132,10 @@ def test_get_signals():
 
     def get_test_signals(c: CZSC) -> OrderedDict:
         s = OrderedDict({"symbol": c.symbol, "dt": c.bars_raw[-1].dt, "close": c.bars_raw[-1].close})
-        s.update(signals.get_s_d0_bi(c))
+        s.update(get_s_d0_bi(c))
         return s
 
-    file_kline = os.path.join(cur_path, "data/000001.SH_D.csv")
-    kline = pd.read_csv(file_kline, encoding="utf-8")
-    kline.loc[:, "dt"] = pd.to_datetime(kline.dt)
-    bars = [RawBar(symbol=row['symbol'], id=i, freq=Freq.D, open=row['open'], dt=row['dt'],
-                   close=row['close'], high=row['high'], low=row['low'], vol=row['vol'])
-            for i, row in kline.iterrows()]
-
+    bars = read_daily()
     # 不计算任何信号
     c = CZSC(bars, max_bi_count=50, get_signals=get_test_signals)
     assert c.signals['日线_倒0笔_方向'] == '向下_任意_任意_0'

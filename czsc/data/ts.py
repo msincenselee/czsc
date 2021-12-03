@@ -5,12 +5,15 @@ email: zeng_bin8888@163.com
 create_dt: 2021/6/25 18:52
 """
 import os
+import time
 import pandas as pd
 import tushare as ts
 from datetime import datetime, timedelta
 from typing import List
+from tqdm import tqdm
+
 from ..analyze import CzscTrader, RawBar, KlineGenerator
-from ..signals import get_default_signals
+from ..signals.signals import get_default_signals
 from ..enum import Freq
 from ..utils.cache import home_path
 
@@ -36,7 +39,10 @@ exchanges = {
 dt_fmt = "%Y-%m-%d %H:%M:%S"
 date_fmt = "%Y%m%d"
 
-pro = ts.pro_api()
+try:
+    pro = ts.pro_api()
+except:
+    print("Tushare Pro 初始化失败")
 
 def get_trade_cal():
     file_cal = os.path.join(home_path, "trade_cal.csv")
@@ -52,8 +58,10 @@ def format_kline(kline: pd.DataFrame, freq: Freq) -> List[RawBar]:
     :return: 转换好的K线数据
     """
     bars = []
-    records = kline.to_dict('records')
     dt_key = 'trade_time' if '分钟' in freq.value else 'trade_date'
+    kline = kline.sort_values(dt_key, ascending=True, ignore_index=True)
+    records = kline.to_dict('records')
+
     for i, record in enumerate(records):
         # 将每一根K线转换成 RawBar 对象
         bar = RawBar(symbol=record['ts_code'], dt=pd.to_datetime(record[dt_key]),
@@ -94,7 +102,7 @@ def get_kline(ts_code: str,
     bars = format_kline(df, freq)
     if bars and bars[-1].dt < pd.to_datetime(end_date) and len(bars) == 8000:
         print(f"获取K线数量达到8000根，数据获取到 {bars[-1].dt}，目标 end_date 为 {end_date}")
-    return bars[::-1]
+    return bars
 
 
 def get_ths_daily(ts_code='885760.TI',
@@ -122,6 +130,22 @@ def get_ths_daily(ts_code='885760.TI',
         bars.append(bar)
     return bars
 
+def get_ths_members(exchange="A"):
+    """获取同花顺概念板块成分股"""
+    concepts = pro.ths_index(exchange=exchange)
+    concepts = concepts.to_dict('records')
+
+    res = []
+    for concept in tqdm(concepts):
+        df = pro.ths_member(ts_code=concept['ts_code'],
+                               fields="ts_code,code,name,weight,in_date,out_date,is_new")
+        df['概念名称'] = concept['name']
+        df['概念代码'] = concept['ts_code']
+        res.append(df)
+        time.sleep(0.3)
+
+    res_df = pd.concat(res, ignore_index=True)
+    return res_df
 
 def get_init_kg(ts_code: str,
                 end_dt: [str, datetime] = None,
