@@ -1,8 +1,7 @@
 # czsc - 缠中说禅技术分析工具
->源于[缠中说缠博客](http://blog.sina.com.cn/chzhshch)，欢迎加群探讨。
->[点击扫码加入企业微信交流群](https://github.com/zengbin93/czsc/issues/64)，加群请备注自己对缠论的了解程度，谢谢。
+>源于[缠中说缠博客](http://blog.sina.com.cn/chzhshch)
 
->**[官方文档（0.6.8）（未更新到0.7.3）](https://blog.csdn.net/baidu_25764509/article/details/110389764)**
+>**[官方文档（0.6.8）（暂未更新到最新版）](https://blog.csdn.net/baidu_25764509/article/details/110389764)**
 
 ## 使用前必看
 
@@ -10,6 +9,7 @@
 * 这是个人开发的项目，虽然我已经尽可能避坑，但可以很直接的说，这里面一定还有坑，使用前请仔细校验分析结果，发现新坑请告诉我，我来填；
 * 目前开发完成度不高，**API会有比较大的变动，谨慎升级版本**，暂时不准备写文档，没有能力看懂源码的，不建议现在使用。
 * 免责声明：项目开源仅用于技术交流！
+* 如果你发现了项目中的 Bug，可以先读一下《[如何有效地报告 Bug](https://www.chiark.greenend.org.uk/~sgtatham/bugs-cn.html)》，然后在 [issues](https://github.com/waditu/czsc/issues) 中报告 Bug
 
 ## 项目贡献
 
@@ -68,5 +68,5 @@ pip install czsc -U -i https://pypi.python.org/simple
 
 ## 捐赠支持
 
->如果这个项目对你的交易有些许帮助，可以加微信 `zengbin93` 进行捐赠，感谢！另外，**可以顺便提一个问题或需求。**
+>如果这个项目对你的交易有些许帮助，可以加微信 `zengbin93` 进行捐赠，感谢！
 
