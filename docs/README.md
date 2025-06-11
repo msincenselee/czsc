@@ -1,5 +1,20 @@
 # 文档
 
+## Sphinx 文档
+
+pip install recommonmark sphinx_rtd_theme sphinx_automodapi
+sphinx-quickstart
+
+sphinx-apidoc.exe -o source ../czsc
+
+
+在 base 环境下，执行以下命令，生成文档：
+
+```shell
+./make.bat clean
+./make.bat html
+```
+
 ## 参考资料
 
 * [前复权、后复权、不复权价格区别与计算](https://liguoqinjim.cn/post/quant/fq_price/)

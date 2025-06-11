@@ -9,6 +9,7 @@ from pyecharts.charts import HeatMap, Kline, Line, Bar, Scatter, Grid, Boxplot
 from pyecharts.commons.utils import JsCode
 from typing import List
 import numpy as np
+from czsc.objects import Operate
 from .ta import SMA, MACD
 
 
@@ -60,12 +61,12 @@ def heat_map(data: List[dict],
 
 
 def kline_pro(kline: List[dict],
-              fx: List[dict] = None,
-              bi: List[dict] = None,
-              xd: List[dict] = None,
-              bs: List[dict] = None,
+              fx: List[dict] = [],
+              bi: List[dict] = [],
+              xd: List[dict] = [],
+              bs: List[dict] = [],
               title: str = "缠中说禅K线分析",
-              t_seq: List[int] = None,
+              t_seq: List[int] = [],
               width: str = "1400px",
               height: str = '580px') -> Grid:
     """绘制缠中说禅K线分析结果
@@ -99,6 +100,7 @@ def kline_pro(kline: List[dict],
                                 title_textstyle_opts=opts.TextStyleOpts(color=up_color, font_size=20),
                                 subtitle_textstyle_opts=opts.TextStyleOpts(color=down_color, font_size=12))
 
+    label_show_opts = opts.LabelOpts(is_show=True)
     label_not_show_opts = opts.LabelOpts(is_show=False)
     legend_not_show_opts = opts.LegendOpts(is_show=False)
     red_item_style = opts.ItemStyleOpts(color=up_color)
@@ -118,12 +120,14 @@ def kline_pro(kline: List[dict],
     dz_slider = opts.DataZoomOpts(True, "slider", xaxis_index=[0, 1, 2], pos_top="96%",
                                   pos_bottom="0%", range_start=80, range_end=100)
 
-    yaxis_opts = opts.AxisOpts(is_scale=True,
+    yaxis_opts = opts.AxisOpts(is_scale=True, min_="dataMin", max_="dataMax",
+                               splitline_opts=opts.SplitLineOpts(is_show=False),
                                axislabel_opts=opts.LabelOpts(color="#c7c7c7", font_size=8, position="inside"))
 
     grid0_xaxis_opts = opts.AxisOpts(type_="category", grid_index=0, axislabel_opts=label_not_show_opts,
                                      split_number=20, min_="dataMin", max_="dataMax",
                                      is_scale=True, boundary_gap=False,
+                                     splitline_opts=opts.SplitLineOpts(is_show=False),
                                      axisline_opts=opts.AxisLineOpts(is_on_zero=False))
 
     tool_tip_opts = opts.TooltipOpts(
@@ -184,12 +188,102 @@ def kline_pro(kline: List[dict],
         xaxis_opts=grid0_xaxis_opts
     )
 
+    # 加入买卖点 - 多头操作 - 空头操作
+    if bs:
+        long_opens = {'i': [], 'val': []}
+        long_exits = {'i': [], 'val': []}
+        short_opens = {'i': [], 'val': []}
+        short_exits = {'i': [], 'val': []}
+
+        for op in bs:
+            _dt = op['dt']
+            _price = round(op['price'], 4)
+            _info = f"{op['op_desc']} - 价格{_price}"
+
+            if op['op'] in [Operate.LO]:
+                long_opens['i'].append(_dt)
+                long_opens['val'].append([_price, _info])
+
+            if op['op'] in [Operate.LE]:
+                long_exits['i'].append(_dt)
+                long_exits['val'].append([_price, _info])
+
+            if op['op'] in [Operate.SO]:
+                short_opens['i'].append(_dt)
+                short_opens['val'].append([_price, _info])
+
+            if op['op'] in [Operate.SE]:
+                short_exits['i'].append(_dt)
+                short_exits['val'].append([_price, _info])
+
+        chart_lo = (
+            Scatter().add_xaxis(xaxis_data=long_opens['i']).add_yaxis(
+                series_name="多头操作",
+                y_axis=long_opens['val'],
+                symbol_size=25,
+                symbol='diamond',
+                label_opts=opts.LabelOpts(is_show=False),
+                itemstyle_opts=opts.ItemStyleOpts(color='#ff461f'),
+                tooltip_opts=opts.TooltipOpts(
+                    textstyle_opts=opts.TextStyleOpts(font_size=12),
+                    formatter=JsCode("function (params) {return params.value[2];}")
+                ),
+            )
+        )
+        chart_le = (
+            Scatter().add_xaxis(xaxis_data=long_exits['i']).add_yaxis(
+                series_name="多头操作",
+                y_axis=long_exits['val'],
+                symbol_size=25,
+                symbol='diamond',
+                label_opts=opts.LabelOpts(is_show=False),
+                itemstyle_opts=opts.ItemStyleOpts(color='#afdd22'),
+                tooltip_opts=opts.TooltipOpts(
+                    textstyle_opts=opts.TextStyleOpts(font_size=12),
+                    formatter=JsCode("function (params) {return params.value[2];}")
+                ),
+            )
+        )
+        chart_so = (
+            Scatter().add_xaxis(xaxis_data=short_opens['i']).add_yaxis(
+                series_name="空头订单",
+                y_axis=short_opens['val'],
+                symbol_size=25,
+                symbol='triangle',
+                label_opts=opts.LabelOpts(is_show=False),
+                itemstyle_opts=opts.ItemStyleOpts(color='#ff461f'),
+                tooltip_opts=opts.TooltipOpts(
+                    textstyle_opts=opts.TextStyleOpts(font_size=12),
+                    formatter=JsCode("function (params) {return params.value[2];}")
+                ),
+            )
+        )
+        chart_se = (
+            Scatter().add_xaxis(xaxis_data=short_exits['i']).add_yaxis(
+                series_name="空头订单",
+                y_axis=short_exits['val'],
+                symbol_size=25,
+                symbol='triangle',
+                label_opts=opts.LabelOpts(is_show=False),
+                itemstyle_opts=opts.ItemStyleOpts(color='#afdd22'),
+                tooltip_opts=opts.TooltipOpts(
+                    textstyle_opts=opts.TextStyleOpts(font_size=12),
+                    formatter=JsCode("function (params) {return params.value[2];}")
+                ),
+            )
+        )
+
+        chart_k = chart_k.overlap(chart_lo)
+        chart_k = chart_k.overlap(chart_le)
+        chart_k = chart_k.overlap(chart_so)
+        chart_k = chart_k.overlap(chart_se)
+
     # 均线图
     # ------------------------------------------------------------------------------------------------------------------
     chart_ma = Line()
     chart_ma.add_xaxis(xaxis_data=dts)
     if not t_seq:
-        t_seq = [10, 20, 60, 120, 250]
+        t_seq = [5, 13, 21]
 
     ma_keys = dict()
     for t in t_seq:
@@ -197,7 +291,7 @@ def kline_pro(kline: List[dict],
 
     for i, (name, ma) in enumerate(ma_keys.items()):
         chart_ma.add_yaxis(series_name=name, y_axis=ma, is_smooth=True,
-                           is_selected=True, symbol_size=0, label_opts=label_not_show_opts,
+                           symbol_size=0, label_opts=label_not_show_opts,
                            linestyle_opts=opts.LineStyleOpts(opacity=0.8, width=1))
 
     chart_ma.set_global_opts(xaxis_opts=grid0_xaxis_opts, legend_opts=legend_not_show_opts)
@@ -207,12 +301,11 @@ def kline_pro(kline: List[dict],
     # ------------------------------------------------------------------------------------------------------------------
     if fx:
         fx_dts = [x['dt'] for x in fx]
-        fx_val = [x['fx'] for x in fx]
-        # chart_fx = Scatter()
+        fx_val = [round(x['fx'], 2) for x in fx]
         chart_fx = Line()
         chart_fx.add_xaxis(fx_dts)
-        chart_fx.add_yaxis(series_name="FX", y_axis=fx_val, is_selected=False,
-                           symbol="circle", symbol_size=6, label_opts=label_not_show_opts,
+        chart_fx.add_yaxis(series_name="FX", y_axis=fx_val,
+                           symbol="circle", symbol_size=6, label_opts=label_show_opts,
                            itemstyle_opts=opts.ItemStyleOpts(color="rgba(152, 147, 193, 1.0)", ))
 
         chart_fx.set_global_opts(xaxis_opts=grid0_xaxis_opts, legend_opts=legend_not_show_opts)
@@ -220,11 +313,11 @@ def kline_pro(kline: List[dict],
 
     if bi:
         bi_dts = [x['dt'] for x in bi]
-        bi_val = [x['bi'] for x in bi]
+        bi_val = [round(x['bi'], 2) for x in bi]
         chart_bi = Line()
         chart_bi.add_xaxis(bi_dts)
-        chart_bi.add_yaxis(series_name="BI", y_axis=bi_val, is_selected=True,
-                           symbol="diamond", symbol_size=10, label_opts=label_not_show_opts,
+        chart_bi.add_yaxis(series_name="BI", y_axis=bi_val,
+                           symbol="diamond", symbol_size=10, label_opts=label_show_opts,
                            itemstyle_opts=opts.ItemStyleOpts(color="rgba(184, 117, 225, 1.0)", ),
                            linestyle_opts=opts.LineStyleOpts(width=1.5))
 
@@ -236,34 +329,12 @@ def kline_pro(kline: List[dict],
         xd_val = [x['xd'] for x in xd]
         chart_xd = Line()
         chart_xd.add_xaxis(xd_dts)
-        chart_xd.add_yaxis(series_name="XD", y_axis=xd_val, is_selected=True, symbol="triangle", symbol_size=10,
+        chart_xd.add_yaxis(series_name="XD", y_axis=xd_val,
+                           symbol="triangle", symbol_size=10,
                            itemstyle_opts=opts.ItemStyleOpts(color="rgba(37, 141, 54, 1.0)", ))
 
         chart_xd.set_global_opts(xaxis_opts=grid0_xaxis_opts, legend_opts=legend_not_show_opts)
         chart_k = chart_k.overlap(chart_xd)
-
-    if bs:
-        b_dts = [x['dt'] for x in bs if x['mark'] == 'buy']
-        if len(b_dts) > 0:
-            b_val = [x['price'] for x in bs if x['mark'] == 'buy']
-            chart_b = Scatter()
-            chart_b.add_xaxis(b_dts)
-            chart_b.add_yaxis(series_name="BUY", y_axis=b_val, is_selected=False, symbol="arrow", symbol_size=8,
-                              itemstyle_opts=opts.ItemStyleOpts(color="#f31e1e", ))
-
-            chart_b.set_global_opts(xaxis_opts=grid0_xaxis_opts, legend_opts=legend_not_show_opts)
-            chart_k = chart_k.overlap(chart_b)
-
-        s_dts = [x['dt'] for x in bs if x['mark'] == 'sell']
-        if len(s_dts) > 0:
-            s_val = [x['price'] for x in bs if x['mark'] == 'sell']
-            chart_s = Scatter()
-            chart_s.add_xaxis(s_dts)
-            chart_s.add_yaxis(series_name="SELL", y_axis=s_val, is_selected=False, symbol="pin", symbol_size=12,
-                              itemstyle_opts=opts.ItemStyleOpts(color="#45b97d", ))
-
-            chart_s.set_global_opts(xaxis_opts=grid0_xaxis_opts, legend_opts=legend_not_show_opts)
-            chart_k = chart_k.overlap(chart_s)
 
     # 成交量图
     # ------------------------------------------------------------------------------------------------------------------
@@ -274,6 +345,7 @@ def kline_pro(kline: List[dict],
         xaxis_opts=opts.AxisOpts(
             type_="category",
             grid_index=1,
+            boundary_gap=False,
             axislabel_opts=opts.LabelOpts(is_show=True, font_size=8, color="#9b9da9"),
         ),
         yaxis_opts=yaxis_opts, legend_opts=legend_not_show_opts,
@@ -289,6 +361,7 @@ def kline_pro(kline: List[dict],
             type_="category",
             grid_index=2,
             axislabel_opts=opts.LabelOpts(is_show=False),
+            splitline_opts=opts.SplitLineOpts(is_show=False),
         ),
         yaxis_opts=opts.AxisOpts(
             grid_index=2,
